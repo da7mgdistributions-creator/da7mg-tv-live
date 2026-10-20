@@ -5,38 +5,69 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DA7MG TV — Live</title>
 <style>
-  html, body { margin:0; padding:0; background:#000; color:#fff; height:100%;
-    font-family: Arial, Helvetica, sans-serif; overflow:hidden; }
-  #wrap { position:fixed; inset:0; background:#000; }
-  video { width:100%; height:100%; object-fit:contain; background:#000; }
-  #bug { position:absolute; top:2.5vh; right:2.5vw; width:9vw; max-width:130px;
-    opacity:.92; pointer-events:none; }
-  #bar { position:absolute; left:0; right:0; bottom:0; padding:2.2vh 3vw;
-    background:linear-gradient(transparent, rgba(0,0,0,.88) 45%); }
-  #chan { color:#D4AF37; font-weight:bold; letter-spacing:.25em; font-size:1.6vw; }
-  #now { font-size:2.6vw; font-weight:bold; margin:.4vh 0; }
-  #next { font-size:1.5vw; color:#ccc; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:#0a0a0a; color:#fff;
+    font-family: Arial, Helvetica, sans-serif; overflow-x:hidden; }
+  header { display:flex; align-items:center; gap:10px; padding:10px 14px;
+    max-width:960px; margin:0 auto; }
+  header img { height:34px; width:auto; max-width:34vw; object-fit:contain; }
+  header .ttl { color:#D4AF37; font-weight:bold; letter-spacing:.18em;
+    font-size:clamp(15px, 4.5vw, 22px); white-space:nowrap; }
+  header .live { color:#fff; background:#c00; border-radius:3px; padding:2px 7px;
+    font-size:clamp(10px, 3vw, 12px); font-weight:bold; letter-spacing:.08em; }
+  #playerwrap { max-width:960px; margin:0 auto; padding:0 8px; }
+  #stage { position:relative; background:#000; border-radius:6px; overflow:hidden; }
+  video { display:block; width:100%; height:auto; aspect-ratio:16/9;
+    max-height:72vh; background:#000; }
   #tap { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
-    background:rgba(0,0,0,.55); font-size:3vw; color:#D4AF37; cursor:pointer; z-index:5; }
-  @media (max-width:700px){ #now{font-size:5.4vw} #next{font-size:3.4vw} #chan{font-size:3.2vw} }
+    text-align:center; padding:0 12px; background:rgba(0,0,0,.55);
+    font-size:clamp(16px, 5vw, 24px); color:#D4AF37; cursor:pointer; z-index:5; }
+  #nowbar { max-width:960px; margin:0 auto; padding:10px 14px 2px; }
+  #chan { color:#D4AF37; font-weight:bold; letter-spacing:.22em;
+    font-size:clamp(11px, 3.2vw, 13px); }
+  #now { font-size:clamp(17px, 5vw, 26px); font-weight:bold; margin:4px 0; line-height:1.25; }
+  #next { font-size:clamp(13px, 3.8vw, 16px); color:#ccc; line-height:1.35; }
+  #upnext { max-width:960px; margin:0 auto; padding:14px 14px 28px; }
+  #upnext h2 { color:#D4AF37; font-size:clamp(13px, 3.8vw, 15px);
+    letter-spacing:.18em; margin:8px 0 4px; }
+  .row { display:flex; gap:10px; align-items:baseline; padding:6px 0;
+    border-bottom:1px solid #222; font-size:13px; }
+  .row .t { color:#D4AF37; min-width:76px; flex:none; font-size:12px; }
+  .row .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row.on .n { font-weight:bold; }
+  @media (max-width:700px){
+    header { padding:8px 10px; }
+    #playerwrap { padding:0; }
+    #stage { border-radius:0; }
+    .row { font-size:12.5px; padding:5px 0; }
+    .row .t { min-width:68px; }
+  }
 </style>
 </head>
 <body>
-<div id="wrap">
-  <video id="tv" autoplay muted playsinline></video>
-  <img id="bug" src="logo.png" alt="DA7MG">
-  <div id="tap">▶ TAP TO PLAY DA7MG TV</div>
-  <div id="bar">
-    <div id="chan">DA7MG TV — LIVE</div>
-    <div id="now">Tuning in…</div>
-    <div id="next"></div>
+<header>
+  <img src="logo.png" alt="DA7MG">
+  <span class="ttl">DA7MG TV</span>
+  <span class="live">LIVE</span>
+</header>
+<div id="playerwrap">
+  <div id="stage">
+    <video id="tv" autoplay muted playsinline controls></video>
+    <div id="tap">▶ TAP TO PLAY DA7MG TV</div>
   </div>
 </div>
+<div id="nowbar">
+  <div id="chan">DA7MG TV — LIVE</div>
+  <div id="now">Tuning in…</div>
+  <div id="next"></div>
+</div>
+<div id="upnext"><h2>COMING UP</h2><div id="rows"></div></div>
 <script>
 const tv = document.getElementById('tv');
 const nowEl = document.getElementById('now');
 const nextEl = document.getElementById('next');
 const tap = document.getElementById('tap');
+const rowsEl = document.getElementById('rows');
 let slots = [], current = -1, startedMuted = true;
 
 function slotAt(t) {
@@ -45,6 +76,20 @@ function slotAt(t) {
   }
   return -1;
 }
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  catch (e) { return ''; }
+}
+function renderRows() {
+  if (!slots.length || current < 0) return;
+  let html = '';
+  for (let i = current; i < Math.min(slots.length, current + 9); i++) {
+    html += '<div class="row' + (i === current ? ' on' : '') + '"><span class="t">'
+      + fmtTime(slots[i].start) + '</span><span class="n">'
+      + slots[i].title.replace(/</g, '&lt;') + '</span></div>';
+  }
+  rowsEl.innerHTML = html;
+}
 function play(i, unmute) {
   if (i < 0 || i >= slots.length) { nowEl.textContent = 'DA7MG TV — back shortly'; return; }
   current = i;
@@ -52,6 +97,7 @@ function play(i, unmute) {
   const into = Math.max(0, (Date.now() - Date.parse(s.start)) / 1000);
   nowEl.textContent = s.title;
   nextEl.textContent = slots[i + 1] ? 'Up next: ' + slots[i + 1].title : '';
+  renderRows();
   tv.src = s.src;
   tv.onloadedmetadata = () => {
     try { tv.currentTime = s.seek + into; } catch (e) {}
